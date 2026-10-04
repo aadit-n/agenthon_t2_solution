@@ -12,8 +12,9 @@ def render(unit: Unit, asof: str, n_draws: int, diagnostics: dict[str, Any]) -> 
         f"# Forecast rationale: {unit.unit_id}", "",
         "## Executive summary", "",
         f"This forecast contains {n_draws} joint Monte Carlo paths using information available through "
-        f"{asof}. The numerical centre is selected by rolling historical validation. Innovations use "
-        "correlated empirical residuals blended with multivariate heavy-tailed shocks.", "",
+        f"{asof}. A {diagnostics.get('m0_share', 0):.0%} defensive component follows the published M0 "
+        "Gaussian-walk distribution; the remaining paths use a correlated event-aware stationary "
+        "bootstrap with stochastic volatility.", "",
         "## Numerical anchors", "",
         "| Asset | Last observation | Recent step volatility | Long-run step volatility | Width calibration | Numerical drift/step |",
         "|---|---:|---:|---:|---:|---:|",
@@ -26,7 +27,9 @@ def render(unit: Unit, asof: str, n_draws: int, diagnostics: dict[str, Any]) -> 
         )
     lines.extend(["", "## Joint structure", "",
                   f"The joint residual alignment used {diagnostics['aligned_rows']} common observations and "
-                  f"{diagnostics['factor_dimension']} empirical factors. All horizons are read from the same paths.", "",
+                  f"{diagnostics['factor_dimension']} empirical factors. All horizons are read from the same paths. "
+                  f"The empirical component assigned {diagnostics.get('stress_draw_share', 0):.1%} of draws "
+                  "to historically stressed innovations.", "",
                   "## Text-conditioned scenarios", "",
                   f"Text used: **{diagnostics['text_used']}**. {diagnostics['text_note']}", "",
                   "| Scenario | Probability | Evidence | Explanation |", "|---|---:|---|---|"])
@@ -35,8 +38,9 @@ def render(unit: Unit, asof: str, n_draws: int, diagnostics: dict[str, Any]) -> 
         explanation = scenario.get("explanation") or "No text adjustment; numerical forecast retained."
         lines.append(f"| {scenario['name']} | {scenario['probability']:.1%} | {evidence} | {explanation} |")
     lines.extend(["", "## Guardrails", "",
-                  "Text drift is family-shrunk and projected into the empirical factor space for joint cards. "
-                  "Inferred text cannot narrow uncertainty. The House model is asked for scenarios, not future "
-                  "values, and unavailable model access falls back to the numerical forecast.", ""])
+                  "Documents are extracted independently before synthesis. Centre shifts require corroboration, "
+                  "text drift is family-shrunk and projected into empirical factor space, and inferred text cannot "
+                  "narrow uncertainty. The model is asked for ex-ante scenarios rather than future values; unavailable "
+                  "model access falls back to the M0-anchored numerical forecast.", ""])
     return "\n".join(lines)
 

@@ -105,7 +105,16 @@ def load_unit(
 
 def target_series(unit: Unit, asset: str, asof: str) -> tuple[pd.Series, str]:
     matches: list[tuple[pd.Series, str]] = []
-    for panel_id, frame in unit.panels.items():
+    declared = unit.card.get("panels", {})
+    preferred = [
+        str(panel_id) for panel_id, metadata in declared.items()
+        if isinstance(metadata, dict) and asset in [str(value) for value in metadata.get("asset_ids", [])]
+    ]
+    order = preferred + [panel_id for panel_id in unit.panels if panel_id not in preferred]
+    for panel_id in order:
+        frame = unit.panels.get(panel_id)
+        if frame is None:
+            continue
         sub = frame[(frame["asset"].astype(str) == asset) & (frame["date"] <= pd.Timestamp(asof))]
         if sub.empty:
             continue
@@ -113,5 +122,5 @@ def target_series(unit: Unit, asset: str, asof: str) -> tuple[pd.Series, str]:
         matches.append((series, panel_id))
     if not matches:
         raise KeyError(f"target asset {asset!r} is absent from supplied panels")
-    return max(matches, key=lambda item: len(item[0]))
+    return matches[0] if preferred else max(matches, key=lambda item: len(item[0]))
 

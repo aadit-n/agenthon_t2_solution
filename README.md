@@ -1,11 +1,12 @@
-# t2_solution
+# agenthon_t2_solution
 
 ## Executive summary
 
-This is a clean-room Agenthon 2026 Track 2 forecasting agent. It combines a
-rolling-validated statistical ensemble, correlated path simulation, and a conservative
-one-call text scenario layer. Text suggestions are projected into the empirical joint-factor
-space and shrunk by card family, so weak language cannot easily destroy a good numerical forecast.
+This is a clean-room Agenthon 2026 Track 2 forecasting agent. Version 0.2 uses the organizers'
+published M0 distribution as a defensive ensemble component, then adds an independently designed
+event-aware stationary bootstrap, correlated stress paths, volatility uncertainty, and a cautious
+document-extraction/synthesis layer. Text suggestions are corroboration-gated, projected into the
+empirical joint-factor space, and shrunk by card family.
 
 The image implements the required command:
 
@@ -16,17 +17,18 @@ forecast --panels /input/panels --text /input/text --asof YYYY-MM-DD --out /outp
 Local smoke run from the organizer repository's parent directory:
 
 ```bash
-pip install -e ./t2_solution
+pip install -e ./agenthon_t2_solution
 forecast \
   --panels ./track2-forecasting-public/units/t2-EXAMPLE-ust-curve-1m \
   --text ./track2-forecasting-public/units/t2-EXAMPLE-ust-curve-1m/text \
   --asof 2024-06-28 \
-  --out ./t2_solution/out/forecast.parquet
+  --out ./agenthon_t2_solution/out/forecast.parquet
 ```
 
 Set `T2_DISABLE_TEXT=1` for a deterministic text-ablation run. Official House-model access uses
-`MODEL_ENDPOINT`, `MODEL_TOKEN`, and `MODEL_NAME`; the implementation makes at most one request,
-caps output at 2,500 tokens, and disables model thinking for reliable structured JSON.
+`MODEL_ENDPOINT`, `MODEL_TOKEN`, and `MODEL_NAME`. The implementation makes one short extraction
+request per selected document plus one synthesis request (at most 11 requests per unit, below the
+published allowance), and disables model thinking for reliable structured JSON.
 
 ## Install and test
 
@@ -68,8 +70,8 @@ the descriptor. Example for GHCR:
 
 ```powershell
 docker buildx build --platform linux/amd64 --provenance=false --sbom=false `
-  -t ghcr.io/<owner>/t2-solution:v0.1 --push .
-docker buildx imagetools inspect ghcr.io/<owner>/t2-solution:v0.1
+  -t ghcr.io/<owner>/t2-solution:v0.2 --push .
+docker buildx imagetools inspect ghcr.io/<owner>/t2-solution:v0.2
 ```
 
 Install the pinned submission toolkit:
@@ -88,7 +90,7 @@ Then package. The Team Key is requested through a hidden prompt and never stored
   --repository <owner>/t2-solution `
   --digest sha256:<64-lowercase-hex> `
   --phase dev `
-  --out .\submissions\v0.1.zip
+  --out .\submissions\v0.2.zip
 ```
 
 The packer pins toolkit 2.4.4, discloses the approved House model snapshot, validates the twelve-key
