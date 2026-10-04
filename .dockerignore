@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+out
+practice_runs
+backtest_runs
+submissions
+tests
+scripts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+

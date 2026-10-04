@@ -1,0 +1,10 @@
+out/
+practice_runs/
+backtest_runs/
+submissions/
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+
