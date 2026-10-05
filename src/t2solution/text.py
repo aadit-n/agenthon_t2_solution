@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -119,7 +120,11 @@ def _house_json(
     payload: dict[str, Any],
     *,
     max_tokens: int,
+    timeout: float = 120,
+    thinking: bool = False,
 ) -> dict[str, Any] | None:
+    if not 1 <= max_tokens <= 4000:
+        raise ValueError('House output request must be within 1..4000 tokens')
     body = json.dumps({
         "model": model,
         "messages": [
@@ -130,7 +135,7 @@ def _house_json(
         "seed": 0,
         "max_tokens": max_tokens,
         "response_format": {"type": "json_object"},
-        "chat_template_kwargs": {"enable_thinking": False},
+        "chat_template_kwargs": {"enable_thinking": thinking},
         "stream": False,
     }, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
@@ -138,10 +143,20 @@ def _house_json(
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             result = json.loads(response.read().decode("utf-8"))
-        return _extract_json(str(result["choices"][0]["message"]["content"]))
-    except (OSError, KeyError, ValueError, json.JSONDecodeError, urllib.error.HTTPError):
+        choice = result['choices'][0]
+        parsed = _extract_json(str(choice['message']['content']))
+        if parsed is None:
+            reason = choice.get('finish_reason')
+            reason = reason if reason in {'stop', 'length', 'content_filter'} else 'unknown'
+            print(f'House invalid JSON; finish_reason={reason}; response ignored', file=sys.stderr)
+        return parsed
+    except urllib.error.HTTPError as exc:
+        print(f'House HTTP {exc.code}; response ignored', file=sys.stderr)
+        return None
+    except (OSError, KeyError, IndexError, TypeError, ValueError):
+        print('House response unavailable or malformed; response ignored', file=sys.stderr)
         return None
 
 

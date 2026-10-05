@@ -12,8 +12,8 @@ def render(unit: Unit, asof: str, n_draws: int, diagnostics: dict[str, Any]) -> 
         f"# Forecast rationale: {unit.unit_id}", "",
         "## Executive summary", "",
         f"This forecast contains {n_draws} joint Monte Carlo paths using information available through "
-        f"{asof}. A {diagnostics.get('m0_share', 0):.0%} defensive component follows the published M0 "
-        "Gaussian-walk distribution; the remaining paths use a correlated event-aware stationary "
+        f"{asof}. A {diagnostics.get('m0_share', 0):.0%} defensive component uses the baseline "
+        "Gaussian-walk construction; the remaining paths use a correlated event-aware stationary "
         "bootstrap with stochastic volatility.", "",
         "## Numerical anchors", "",
         "| Asset | Last observation | Recent step volatility | Long-run step volatility | Width calibration | Numerical drift/step |",
@@ -37,10 +37,27 @@ def render(unit: Unit, asof: str, n_draws: int, diagnostics: dict[str, Any]) -> 
         evidence = ", ".join(scenario.get("evidence", [])) or "none"
         explanation = scenario.get("explanation") or "No text adjustment; numerical forecast retained."
         lines.append(f"| {scenario['name']} | {scenario['probability']:.1%} | {evidence} | {explanation} |")
-    lines.extend(["", "## Guardrails", "",
-                  "Documents are extracted independently before synthesis. Centre shifts require corroboration, "
-                  "text drift is family-shrunk and projected into empirical factor space, and inferred text cannot "
-                  "narrow uncertainty. The model is asked for ex-ante scenarios rather than future values; unavailable "
-                  "model access falls back to the M0-anchored numerical forecast.", ""])
+    research = diagnostics.get('research', {})
+    lines.extend(['', '## Research profile', '',
+                  f"Profile: {research.get('profile', 'v2')}. Cumulative log-return candidates use log(1+r); "
+                  'monthly trend fitting uses explicit month counts. The v2 rollback retains its original semantics.'])
+    if 'conditioning' in diagnostics:
+        details = diagnostics['conditioning']
+        lines.extend(['', '## Experimental trajectory selection', '',
+                      f"Applied: {details.get('text_used', False)}; House calls: {details.get('house_calls', 0)}; "
+                      f"effective sample-size ratio: {details.get('ess_ratio', 1):.3f}.",
+                      'House may only reweight existing complete joint draws; it cannot invent forecast values.',
+                      f"Details: {details}"])
+    if 'conditioning' in diagnostics:
+        guardrails = ('Only dated, eligible document excerpts are supplied to House. Weight changes require '
+                      'verified quotations and a skeptical audit. Mean movement and effective sample size are '
+                      'bounded, and complete original joint draws are selected without inventing values. '
+                      'Unavailable or failed model access retains the numerical forecast.')
+    else:
+        guardrails = ('Documents are extracted independently before synthesis. Centre shifts require '
+                      'corroboration, text drift is family-shrunk and projected into empirical factor space, '
+                      'and inferred text cannot narrow uncertainty. The model is asked for ex-ante scenarios '
+                      'rather than future values; unavailable model access retains the numerical forecast.')
+    lines.extend(['', '## Guardrails', '', guardrails, ''])
     return "\n".join(lines)
 

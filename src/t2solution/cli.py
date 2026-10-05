@@ -13,7 +13,8 @@ import numpy as np
 import pandas as pd
 
 from . import __version__
-from .model import numeric_context, prepare, simulate
+from . import candidate, conditioning
+from .model import numeric_context
 from .rationale import render
 from .text import infer_text_view
 from .unit import load_unit
@@ -72,20 +73,45 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--card", type=pathlib.Path)
     parser.add_argument("--n-draws", type=int, default=2000)
     parser.add_argument("--seed", type=int)
+    parser.add_argument('--profile', choices=candidate.PROFILES, default=os.environ.get('T2_PROFILE', 'corrected'))
+    parser.add_argument('--text-mode', choices=('legacy', 'trajectory'), default=os.environ.get('T2_TEXT_MODE', 'legacy'))
+    parser.add_argument('--thinking', action='store_true', help='experimental thinking for trajectory reads only')
     args = parser.parse_args(argv)
 
     started = time.time()
     unit = load_unit(args.panels, args.text, args.asof, args.card)
     n_draws = min(20_000, max(200, unit.n_draws_min, args.n_draws))
     seed = _seed(args.seed)
-    states = prepare(unit, args.asof)
-    view = infer_text_view(unit, args.asof, numeric_context(states))
-    samples, diagnostics = simulate(unit, args.asof, states, view, n_draws, seed)
+    states = candidate.prepare(unit, args.asof, args.profile)
+    if args.text_mode == 'legacy':
+        # Keep the scored text prompts, 11-call allocation and adjustment caps unchanged.
+        view = infer_text_view(unit, args.asof, numeric_context(states))
+    else:
+        from .text import TextView
+        view = TextView.neutral()
+    samples, diagnostics = candidate.simulate(unit, args.asof, states, view, n_draws, seed, args.profile)
+    if args.text_mode == 'trajectory':
+        context = numeric_context(states)
+        for i, state in enumerate(states):
+            context[state.asset]['forecast'] = {
+                str(h): {'steps': diagnostics['step_grid'][i][j],
+                         'q05': float(np.quantile(samples[:, i, j], 0.05)),
+                         'median': float(np.median(samples[:, i, j])),
+                         'q95': float(np.quantile(samples[:, i, j], 0.95))}
+                for j, h in enumerate(unit.horizons)}
+            if 'fx' in state.panel.lower() and state.asset in {'EUR', 'GBP', 'AUD', 'NZD', 'JPY', 'CHF', 'CAD', 'SEK', 'NOK', 'DKK', 'CNY', 'INR', 'BRL'}:
+                usd_base = state.asset not in {'EUR', 'GBP', 'AUD', 'NZD'}
+                context[state.asset]['native_quote'] = f'{state.asset} per USD' if usd_base else f'USD per {state.asset}'
+                context[state.asset]['native_quote_rises_when'] = f'{state.asset} weakens' if usd_base else f'{state.asset} strengthens'
+        samples, details = conditioning.condition(unit, args.asof, samples, context, seed, thinking=args.thinking)
+        diagnostics.update(conditioning=details, house_calls=details['house_calls'],
+                           text_used=details['text_used'], text_note=details['note'])
     _write_outputs(args.out, unit, args.asof, samples, diagnostics, seed, time.time() - started)
     print(
         f"wrote {args.out}, forecast_meta.json and forecast_rationale.md; "
         f"{len(unit.assets)} assets x {len(unit.horizons)} horizons x {n_draws} draws; "
-        f"text={view.used}, House calls={view.call_count}, elapsed={time.time() - started:.2f}s"
+        f"profile={args.profile}, text_mode={args.text_mode}, text={diagnostics['text_used']}, "
+        f"House calls={diagnostics['house_calls']}, elapsed={time.time() - started:.2f}s"
     )
     return 0
 
