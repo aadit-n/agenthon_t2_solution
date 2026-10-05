@@ -37,6 +37,15 @@ def render(unit: Unit, asof: str, n_draws: int, diagnostics: dict[str, Any]) -> 
         evidence = ", ".join(scenario.get("evidence", [])) or "none"
         explanation = scenario.get("explanation") or "No text adjustment; numerical forecast retained."
         lines.append(f"| {scenario['name']} | {scenario['probability']:.1%} | {evidence} | {explanation} |")
+    audit = diagnostics.get("text_reliability", {})
+    if audit:
+        lines.extend(["", "## Text reliability", "",
+                      f"Status: {audit['status']}. Selected documents: {audit.get('documents_selected', 0)}; "
+                      f"valid signal cards: {audit.get('signals_valid', 0)}; House calls: {audit['house_calls']}.",
+                      f"Document exclusions: {audit.get('document_exclusions', {})}.",
+                      f"Call outcomes: {audit.get('call_outcomes', {})}.",
+                      "Nonzero signals require quotes checked against the supplied excerpt and full document. "
+                      "Incomplete asset maps and truncated responses are rejected, not filled with neutral defaults."])
     lines.extend(["", "## Guardrails", "",
                   "Documents are extracted independently before synthesis. Centre shifts require corroboration, "
                   "text drift is family-shrunk and projected into empirical factor space, and inferred text cannot "

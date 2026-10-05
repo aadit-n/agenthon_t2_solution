@@ -55,8 +55,13 @@ def _write_outputs(
         "representation": "samples",
         "n_draws": int(n_draws),
         "agent": {"name": "t2-solution", "version": __version__, "seed": seed,
-                  "elapsed_seconds": round(elapsed, 3), "house_calls": diagnostics["house_calls"]},
+                  "elapsed_seconds": round(elapsed, 3), "house_calls": diagnostics["house_calls"],
+                  "text_mode": diagnostics["text_mode"]},
     }
+    if diagnostics.get("text_reliability"):
+        meta["agent"]["text_diagnostics"] = {
+            key: value for key, value in diagnostics["text_reliability"].items() if key != "attempts"
+        }
     (output.parent / "forecast_meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     (output.parent / "forecast_rationale.md").write_text(
         render(unit, asof, n_draws, diagnostics), encoding="utf-8"
@@ -72,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--card", type=pathlib.Path)
     parser.add_argument("--n-draws", type=int, default=2000)
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--text-mode", choices=("reliable", "legacy"),
+                        default=os.environ.get("T2_TEXT_MODE", "reliable"))
     args = parser.parse_args(argv)
 
     started = time.time()
@@ -79,8 +86,10 @@ def main(argv: list[str] | None = None) -> int:
     n_draws = min(20_000, max(200, unit.n_draws_min, args.n_draws))
     seed = _seed(args.seed)
     states = prepare(unit, args.asof)
-    view = infer_text_view(unit, args.asof, numeric_context(states))
+    view = infer_text_view(unit, args.asof, numeric_context(states), mode=args.text_mode)
     samples, diagnostics = simulate(unit, args.asof, states, view, n_draws, seed)
+    diagnostics["text_mode"] = args.text_mode
+    diagnostics["text_reliability"] = getattr(view, "reliability", {})
     _write_outputs(args.out, unit, args.asof, samples, diagnostics, seed, time.time() - started)
     print(
         f"wrote {args.out}, forecast_meta.json and forecast_rationale.md; "
