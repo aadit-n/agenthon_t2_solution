@@ -285,7 +285,7 @@ def _safe_covariance(frame: pd.DataFrame, fallback: np.ndarray) -> tuple[np.ndar
     return mean, cov
 
 
-def simulate(
+def simulate_incumbent(
     unit: Unit, asof: str, states: list[AssetState], text_view: TextView, n_draws: int, seed: int
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """M0-anchored mixture with an event-aware empirical component and cautious text overlay."""
@@ -428,3 +428,66 @@ def simulate(
         "assets": numeric_context(states),
     }
     return output, diagnostics
+
+
+def simulate_adaptive(
+    unit: Unit, asof: str, states: list[AssetState], text_view: TextView, n_draws: int, seed: int
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Experimental cutoff-adaptive ensemble; the scored incumbent remains available.
+
+    This research branch is not a release. Short, gapped and monthly histories use the
+    incumbent exactly. Eligible daily tasks retain 20% incumbent paths as a stress hedge.
+    The v0.5 evidence extraction/synthesis code and its quantitative guards are unchanged.
+    """
+    from .adaptive import fit, sample
+
+    fitted = fit(unit, asof)
+    if fitted is None:
+        output, diagnostics = simulate_incumbent(unit, asof, states, text_view, n_draws, seed)
+        diagnostics["numerical_engine"] = "incumbent_fallback"
+        return output, diagnostics
+    incumbent, diagnostics = simulate_incumbent(unit, asof, states, TextView.neutral(), n_draws, seed)
+    adaptive, centers, learning = sample(fitted, n_draws, (seed + 104729) % 2**32)
+    shape = (n_draws, len(unit.assets), len(unit.horizons))
+    output, centers = adaptive.reshape(shape), centers.reshape(shape)
+    rng = np.random.default_rng((seed + 130363) % 2**32)
+    keep = rng.random(n_draws) < .20
+    output[keep] = incumbent[keep]
+    baseline_frame = pd.concat([s.baseline_steps.rename(s.asset) for s in states], axis=1).dropna()
+    baseline_mean = baseline_frame.mean().to_numpy(dtype=float)
+    for i, state in enumerate(states):
+        mean_step = diagnostics["m0_share"] * baseline_mean[i] + (1 - diagnostics["m0_share"]) * state.drift_step
+        centers[keep, i, :] = state.anchor + mean_step * np.array(unit.horizons) if state.transform == "level" else mean_step * np.array(unit.horizons)
+    basis = _factor_basis(np.array(diagnostics["correlation"]))
+    _project_text(text_view, unit.assets, basis, unit.family)
+    probabilities = np.array([scenario.probability for scenario in text_view.scenarios], dtype=float)
+    probabilities /= probabilities.sum()
+    chosen = rng.choice(len(probabilities), size=n_draws, p=probabilities)
+    shortest, max_steps = min(unit.horizons), max(unit.horizons)
+    horizons = np.array(unit.horizons)
+    for index, scenario in enumerate(text_view.scenarios):
+        selected = chosen == index
+        rows = np.flatnonzero(selected)
+        for i, state in enumerate(states):
+            base_sd = max(state.vol_recent, float(state.baseline_steps.std(ddof=1))) * math.sqrt(shortest)
+            drift_step = scenario.drift_sd.get(state.asset, 0.0) * base_sd / shortest
+            multiplier = scenario.vol_mult.get(state.asset, 1.0)
+            output[selected, i, :] = centers[selected, i, :] + (output[selected, i, :] - centers[selected, i, :]) * multiplier + drift_step * horizons
+            tilt = scenario.tail_tilt.get(state.asset, 0.0)
+            rare = rng.random(len(rows)) < .035 * abs(tilt)
+            for row in rows[rare]:
+                when = int(rng.integers(1, max_steps + 1))
+                magnitude = base_sd * float(np.clip(abs(rng.normal(.9, .25)), .4, 1.5))
+                output[row, i, horizons >= when] += math.copysign(magnitude, tilt)
+    diagnostics.update(numerical_engine="cutoff_adaptive_experimental", adaptive=learning,
+                       incumbent_hedge_share=.20, text_used=text_view.used, text_note=text_view.note,
+                       house_calls=text_view.call_count, model=text_view.model,
+                       scenarios=[scenario.__dict__ for scenario in text_view.scenarios])
+    return output, diagnostics
+
+
+def simulate(
+    unit: Unit, asof: str, states: list[AssetState], text_view: TextView, n_draws: int, seed: int
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Keep the scored incumbent as the default until a candidate passes release gates."""
+    return simulate_incumbent(unit, asof, states, text_view, n_draws, seed)

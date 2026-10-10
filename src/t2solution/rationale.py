@@ -8,13 +8,20 @@ from .unit import Unit
 
 
 def render(unit: Unit, asof: str, n_draws: int, diagnostics: dict[str, Any]) -> str:
+    adaptive = diagnostics.get("adaptive")
+    if adaptive:
+        summary = (f"This experimental forecast contains {n_draws} joint draws through {asof}. "
+                   "20% retain the incumbent numerical distribution; 80% use cutoff-local "
+                   "probabilistic experts. This candidate has not passed release gates.")
+    else:
+        summary = (f"This forecast contains {n_draws} joint Monte Carlo paths using information available through "
+                   f"{asof}. A {diagnostics.get('m0_share', 0):.0%} defensive component follows the published M0 "
+                   "Gaussian-walk distribution; the remaining paths use a correlated event-aware stationary "
+                   "bootstrap with stochastic volatility.")
     lines = [
         f"# Forecast rationale: {unit.unit_id}", "",
         "## Executive summary", "",
-        f"This forecast contains {n_draws} joint Monte Carlo paths using information available through "
-        f"{asof}. A {diagnostics.get('m0_share', 0):.0%} defensive component follows the published M0 "
-        "Gaussian-walk distribution; the remaining paths use a correlated event-aware stationary "
-        "bootstrap with stochastic volatility.", "",
+        summary, "",
         "## Numerical anchors", "",
         "| Asset | Last observation | Recent step volatility | Long-run step volatility | Width calibration | Numerical drift/step |",
         "|---|---:|---:|---:|---:|---:|",
@@ -37,6 +44,15 @@ def render(unit: Unit, asof: str, n_draws: int, diagnostics: dict[str, Any]) -> 
         evidence = ", ".join(scenario.get("evidence", [])) or "none"
         explanation = scenario.get("explanation") or "No text adjustment; numerical forecast retained."
         lines.append(f"| {scenario['name']} | {scenario['probability']:.1%} | {evidence} | {explanation} |")
+    if adaptive:
+        lines.extend(["", "## Experimental numerical learner", "",
+                      f"Selection used {adaptive['completed_nonoverlapping_origins']} completed, non-overlapping "
+                      f"origins. The last training label is dated {adaptive['last_training_label']}; "
+                      f"the supplied history ends {adaptive['history_end']}.",
+                      f"Shared expert weights: {adaptive['weights']}.",
+                      "The Gaussian CRPS/tail training surrogate is not the official normalized composite. "
+                      "Joint paths use a shared expert across all cells; monthly/short/gapped inputs fall back "
+                      "to the incumbent. This is research output, not a scored improvement."])
     audit = diagnostics.get("text_reliability", {})
     if audit:
         lines.extend(["", "## Text reliability", "",

@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from . import __version__
-from .model import numeric_context, prepare, simulate
+from .model import numeric_context, prepare, simulate, simulate_adaptive
 from .rationale import render
 from .text import infer_text_view
 from .unit import load_unit
@@ -79,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--text-mode", choices=("reliable", "legacy"),
                         default=os.environ.get("T2_TEXT_MODE", "reliable"))
+    parser.add_argument("--numeric-engine", choices=("incumbent", "adaptive-experimental"),
+                        default="incumbent", help="adaptive is research-only and has NOT passed release gates")
     args = parser.parse_args(argv)
 
     started = time.time()
@@ -87,7 +89,8 @@ def main(argv: list[str] | None = None) -> int:
     seed = _seed(args.seed)
     states = prepare(unit, args.asof)
     view = infer_text_view(unit, args.asof, numeric_context(states), mode=args.text_mode)
-    samples, diagnostics = simulate(unit, args.asof, states, view, n_draws, seed)
+    engine = simulate_adaptive if args.numeric_engine == "adaptive-experimental" else simulate
+    samples, diagnostics = engine(unit, args.asof, states, view, n_draws, seed)
     diagnostics["text_mode"] = args.text_mode
     diagnostics["text_reliability"] = getattr(view, "reliability", {})
     _write_outputs(args.out, unit, args.asof, samples, diagnostics, seed, time.time() - started)
