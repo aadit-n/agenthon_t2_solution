@@ -1,0 +1,8 @@
+# Development-only. Do not install into or alter the scored submission environment.
+numpy==2.1.3
+pandas==2.2.3
+pyarrow==18.1.0
+scipy==1.16.3
+# v2.6.0 resolved to this commit on 2026-10-10.
+qfbench2-common[data] @ git+https://github.com/Agenthon-2026/Agenthon2026-public.git@bd01548e34d21fd660d88fd06157078fb25ece4e#subdirectory=common
+qfbench2-track-forecasting @ git+https://github.com/Agenthon-2026/track2-forecasting-public.git@30c8019d997f930eab9ba569d089d12298d86d8c

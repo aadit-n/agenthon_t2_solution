@@ -53,6 +53,12 @@ docker buildx build --platform linux/amd64 --load -t t2-solution:dev .
 
 ## Leakage-safe calibration
 
+For new experiments, use the [real-engine validation workflow](VALIDATION.md). It runs the
+actual joint simulator, evaluates all three organizer score components, freezes chronological
+holdouts and provides paired comparisons in a separate, pinned validation environment.
+The script below is retained only as a legacy simplified marginal diagnostic; it is not a
+reliable substitute for testing the submitted engine or the current normalization procedure.
+
 The rolling backtest creates pseudo-cutoffs inside each panel's pre-as-of history. It does not
 reconstruct or consult the practice-card target window:
 

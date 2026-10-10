@@ -6,6 +6,7 @@ practice_runs
 backtest_runs
 submissions
 tests
+validation_tests
 scripts
 __pycache__
 *.pyc
